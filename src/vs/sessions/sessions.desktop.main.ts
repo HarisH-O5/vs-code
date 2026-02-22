@@ -3,13 +3,11 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-
 import './sessions.common.main.js';
 
 //#region --- workbench (agentic desktop main)
 
 import './electron-browser/sessions.main.js';
-import './electron-browser/titleService.js';
 import '../workbench/electron-browser/desktop.contribution.js';
 
 //#endregion
@@ -81,6 +79,8 @@ import '../platform/extensionManagement/electron-browser/extensionsProfileScanne
 import '../platform/webContentExtractor/electron-browser/webContentExtractorService.js';
 import '../workbench/services/process/electron-browser/processService.js';
 import '../workbench/services/power/electron-browser/powerService.js';
+import './services/title/electron-browser/titleService.js';
+import './services/copilotSdk/electron-browser/copilotSdkService.js';
 
 import { registerSingleton } from '../platform/instantiation/common/extensions.js';
 import { IUserDataInitializationService, UserDataInitializationService } from '../workbench/services/userData/browser/userDataInit.js';

@@ -15,8 +15,8 @@ import { IWorkbenchContribution } from '../../../../workbench/common/contributio
 import { IActiveSessionItem, ISessionsManagementService } from '../../sessions/browser/sessionsManagementService.js';
 import { ITerminalInstance, ITerminalService } from '../../../../workbench/contrib/terminal/browser/terminal.js';
 import { Menus } from '../../../browser/menus.js';
-import { ISessionsConfigurationService, ISessionScript } from './sessionsConfigurationService.js';
 import { ContextKeyExpr } from '../../../../platform/contextkey/common/contextkey.js';
+import { ISessionScript, ISessionsConfigurationService } from './sessionsConfigurationService.js';
 import { IsAuxiliaryWindowContext } from '../../../../workbench/common/contextkeys.js';
 
 
