@@ -38,6 +38,8 @@ import { basename } from '../../../../../base/common/resources.js';
 import { Schemas } from '../../../../../base/common/network.js';
 import { isWindows, isMacintosh } from '../../../../../base/common/platform.js';
 import { ResourceContextKey } from '../../../../common/contextkeys.js';
+import { AccessibleViewRegistry } from '../../../../../platform/accessibility/browser/accessibleViewRegistry.js';
+import { AICustomizationAccessibilityHelp } from './aiCustomizationAccessibilityHelp.js';
 
 //#region Editor Registration
 
@@ -315,5 +317,11 @@ registerWorkbenchContribution2(
 	AICustomizationManagementActionsContribution,
 	WorkbenchPhase.AfterRestored
 );
+
+//#endregion
+
+//#region Accessibility
+
+AccessibleViewRegistry.register(new AICustomizationAccessibilityHelp());
 
 //#endregion

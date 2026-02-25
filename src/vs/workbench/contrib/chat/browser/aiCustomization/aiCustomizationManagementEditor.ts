@@ -32,6 +32,7 @@ import { PANEL_BORDER } from '../../../../common/theme.js';
 import { AICustomizationManagementEditorInput } from './aiCustomizationManagementEditorInput.js';
 import { AICustomizationListWidget } from './aiCustomizationListWidget.js';
 import { McpListWidget } from './mcpListWidget.js';
+import { AICustomizationOverviewWidget } from './aiCustomizationOverviewWidget.js';
 import {
 	AI_CUSTOMIZATION_MANAGEMENT_EDITOR_ID,
 	AI_CUSTOMIZATION_MANAGEMENT_SIDEBAR_WIDTH_KEY,
@@ -44,7 +45,7 @@ import {
 	SIDEBAR_MAX_WIDTH,
 	CONTENT_MIN_WIDTH,
 } from './aiCustomizationManagement.js';
-import { agentIcon, instructionsIcon, promptIcon, skillIcon, hookIcon } from './aiCustomizationIcons.js';
+import { agentIcon, instructionsIcon, overviewIcon, promptIcon, skillIcon, hookIcon } from './aiCustomizationIcons.js';
 import { ChatModelsWidget } from '../chatManagement/chatModelsWidget.js';
 import { PromptsType } from '../../common/promptSyntax/promptTypes.js';
 import { IPromptsService, PromptsStorage } from '../../common/promptSyntax/service/promptsService.js';
@@ -60,6 +61,7 @@ import { IConfigurationService } from '../../../../../platform/configuration/com
 import { ILayoutService } from '../../../../../platform/layout/browser/layoutService.js';
 import { getSimpleEditorOptions } from '../../../codeEditor/browser/simpleEditorOptions.js';
 import { IWorkingCopyService } from '../../../../services/workingCopy/common/workingCopyService.js';
+import { ILogService } from '../../../../../platform/log/common/log.js';
 import { McpServerEditorInput } from '../../../mcp/browser/mcpServerEditorInput.js';
 import { McpServerEditor } from '../../../mcp/browser/mcpServerEditor.js';
 import { IWorkbenchMcpServer } from '../../../mcp/common/mcpTypes.js';
@@ -132,6 +134,8 @@ export class AICustomizationManagementEditor extends EditorPane {
 	private sidebarContainer!: HTMLElement;
 	private sectionsList!: WorkbenchList<ISectionItem>;
 	private contentContainer!: HTMLElement;
+	private overviewWidget: AICustomizationOverviewWidget | undefined;
+	private overviewContentContainer!: HTMLElement;
 	private listWidget!: AICustomizationListWidget;
 	private mcpListWidget: McpListWidget | undefined;
 	private modelsWidget: ChatModelsWidget | undefined;
@@ -182,6 +186,7 @@ export class AICustomizationManagementEditor extends EditorPane {
 		@IConfigurationService private readonly configurationService: IConfigurationService,
 		@ILayoutService private readonly layoutService: ILayoutService,
 		@IWorkingCopyService private readonly workingCopyService: IWorkingCopyService,
+		@ILogService private readonly logService: ILogService,
 	) {
 		super(AICustomizationManagementEditor.ID, group, telemetryService, themeService, storageService);
 
@@ -204,6 +209,7 @@ export class AICustomizationManagementEditor extends EditorPane {
 
 		// Build sections from the workspace service configuration
 		const sectionInfo: Record<string, { label: string; icon: ThemeIcon }> = {
+			[AICustomizationManagementSection.Overview]: { label: localize('overview', "Overview"), icon: overviewIcon },
 			[AICustomizationManagementSection.Agents]: { label: localize('agents', "Agents"), icon: agentIcon },
 			[AICustomizationManagementSection.Skills]: { label: localize('skills', "Skills"), icon: skillIcon },
 			[AICustomizationManagementSection.Instructions]: { label: localize('instructions', "Instructions"), icon: instructionsIcon },
@@ -219,13 +225,19 @@ export class AICustomizationManagementEditor extends EditorPane {
 			}
 		}
 
-		// Restore selected section from storage, falling back to first available
+		// Restore selected section from storage, falling back to Overview or first available
 		const savedSection = this.storageService.get(AI_CUSTOMIZATION_MANAGEMENT_SELECTED_SECTION_KEY, StorageScope.PROFILE);
 		if (savedSection && this.sections.some(s => s.id === savedSection)) {
 			this.selectedSection = savedSection as AICustomizationManagementSection;
+		} else if (this.sections.some(s => s.id === AICustomizationManagementSection.Overview)) {
+			this.selectedSection = AICustomizationManagementSection.Overview;
 		} else if (this.sections.length > 0) {
 			this.selectedSection = this.sections[0].id;
 		}
+	}
+
+	getOverviewWidget(): AICustomizationOverviewWidget | undefined {
+		return this.overviewWidget;
 	}
 
 	protected override createEditor(parent: HTMLElement): void {
@@ -276,6 +288,7 @@ export class AICustomizationManagementEditor extends EditorPane {
 			layout: (width, _, height) => {
 				this.contentContainer.style.width = `${width}px`;
 				if (height !== undefined) {
+					this.overviewWidget?.layout(new DOM.Dimension(width, height));
 					this.listWidget.layout(height - 16, width - 24);
 					this.mcpListWidget?.layout(height - 16, width - 24);
 					const modelsFooterHeight = this.modelsFooterElement?.offsetHeight || 80;
@@ -352,6 +365,21 @@ export class AICustomizationManagementEditor extends EditorPane {
 	private createContent(): void {
 		const contentInner = DOM.append(this.contentContainer, $('.content-inner'));
 
+		// Container for overview content
+		this.overviewContentContainer = DOM.append(contentInner, $('.overview-content-container.ai-customization-overview'));
+		this.overviewContentContainer.style.display = 'none';
+
+		this.overviewWidget = this.editorDisposables.add(this.instantiationService.createInstance(AICustomizationOverviewWidget));
+		this.overviewWidget.render(this.overviewContentContainer);
+
+		this.editorDisposables.add(this.overviewWidget.onDidSelectSection(section => {
+			this.selectSection(section);
+			const index = this.sections.findIndex(s => s.id === section);
+			if (index >= 0) {
+				this.sectionsList.setSelection([index]);
+			}
+		}));
+
 		// Container for prompts-based content (Agents, Skills, Instructions, Prompts)
 		this.promptsContentContainer = DOM.append(contentInner, $('.prompts-content-container'));
 		this.listWidget = this.editorDisposables.add(this.instantiationService.createInstance(AICustomizationListWidget));
@@ -424,6 +452,8 @@ export class AICustomizationManagementEditor extends EditorPane {
 		// Load items for the initial section
 		if (this.isPromptsSection(this.selectedSection)) {
 			void this.listWidget.setSection(this.selectedSection);
+		} else if (this.selectedSection === AICustomizationManagementSection.Overview) {
+			this.overviewWidget?.refresh();
 		}
 	}
 
@@ -459,6 +489,11 @@ export class AICustomizationManagementEditor extends EditorPane {
 		// Update content visibility
 		this.updateContentVisibility();
 
+		// Update Overview counts if selected
+		if (section === AICustomizationManagementSection.Overview) {
+			this.overviewWidget?.refresh();
+		}
+
 		// Load items for the new section (only for prompts-based sections)
 		if (this.isPromptsSection(section)) {
 			void this.listWidget.setSection(section);
@@ -475,10 +510,12 @@ export class AICustomizationManagementEditor extends EditorPane {
 	private updateContentVisibility(): void {
 		const isEditorMode = this.viewMode === 'editor';
 		const isMcpDetailMode = this.viewMode === 'mcpDetail';
+		const isOverviewSection = this.selectedSection === AICustomizationManagementSection.Overview;
 		const isPromptsSection = this.isPromptsSection(this.selectedSection);
 		const isModelsSection = this.selectedSection === AICustomizationManagementSection.Models;
 		const isMcpSection = this.selectedSection === AICustomizationManagementSection.McpServers;
 
+		this.overviewContentContainer.style.display = !isEditorMode && !isMcpDetailMode && isOverviewSection ? '' : 'none';
 		this.promptsContentContainer.style.display = !isEditorMode && !isMcpDetailMode && isPromptsSection ? '' : 'none';
 		if (this.modelsContentContainer) {
 			this.modelsContentContainer.style.display = !isEditorMode && !isMcpDetailMode && isModelsSection ? '' : 'none';
@@ -727,7 +764,7 @@ export class AICustomizationManagementEditor extends EditorPane {
 				}
 			}));
 		} catch (error) {
-			console.error('Failed to load model for embedded editor:', error);
+			this.logService.error('Failed to load model for embedded editor:', error);
 			this.goBackToList();
 		}
 	}
