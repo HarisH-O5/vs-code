@@ -420,6 +420,9 @@ export class AICustomizationManagementEditor extends EditorPane {
 		if (this.isPromptsSection(this.selectedSection)) {
 			void this.listWidget.setSection(this.selectedSection);
 		}
+
+		// Trigger a count refresh so badges/overview are up-to-date
+		this.workspaceService.refreshCounts();
 	}
 
 	private isPromptsSection(section: AICustomizationManagementSection): boolean {
@@ -556,6 +559,9 @@ export class AICustomizationManagementEditor extends EditorPane {
 		if (this.dimension) {
 			this.layout(this.dimension);
 		}
+
+		// Refresh counts each time the editor is focused/opened
+		this.workspaceService.refreshCounts();
 	}
 
 	override clearInput(): void {
@@ -727,6 +733,9 @@ export class AICustomizationManagementEditor extends EditorPane {
 		this.embeddedEditor?.setModel(null);
 		this.viewMode = 'list';
 		this.updateContentVisibility();
+
+		// Refresh the list to reflect any changes made in the editor
+		void this.listWidget?.refresh();
 
 		if (this.dimension) {
 			this.layout(this.dimension);
