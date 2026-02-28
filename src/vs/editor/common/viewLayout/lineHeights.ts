@@ -195,13 +195,31 @@ export class LineHeightsManager {
 		if (stagedInserts.length === 0 && this._invalidIndex === Infinity) {
 			return;
 		}
-		for (const pendingChange of stagedInserts) {
-			const candidateInsertionIndex = this._binarySearchOverOrderedCustomLinesArray(pendingChange.lineNumber);
-			const insertionIndex = candidateInsertionIndex >= 0 ? candidateInsertionIndex : -(candidateInsertionIndex + 1);
-			this._orderedCustomLines.splice(insertionIndex, 0, pendingChange);
-			this._invalidIndex = Math.min(this._invalidIndex, insertionIndex);
+		if (stagedInserts.length > 0) {
+			stagedInserts.sort((a, b) => a.lineNumber - b.lineNumber);
+			const merged: CustomLine[] = [];
+			let stagedInsertIndex = 0;
+			let orderedCustomLineIndex = 0;
+			let minInsertionIndex = this._orderedCustomLines.length;
+			while (stagedInsertIndex < stagedInserts.length && orderedCustomLineIndex < this._orderedCustomLines.length) {
+				if (stagedInserts[stagedInsertIndex].lineNumber <= this._orderedCustomLines[orderedCustomLineIndex].lineNumber) {
+					minInsertionIndex = Math.min(minInsertionIndex, merged.length);
+					merged.push(stagedInserts[stagedInsertIndex++]);
+				} else {
+					merged.push(this._orderedCustomLines[orderedCustomLineIndex++]);
+				}
+			}
+			while (stagedInsertIndex < stagedInserts.length) {
+				minInsertionIndex = Math.min(minInsertionIndex, merged.length);
+				merged.push(stagedInserts[stagedInsertIndex++]);
+			}
+			while (orderedCustomLineIndex < this._orderedCustomLines.length) {
+				merged.push(this._orderedCustomLines[orderedCustomLineIndex++]);
+			}
+			this._orderedCustomLines = merged;
+			this._invalidIndex = Math.min(this._invalidIndex, minInsertionIndex);
+			stagedInserts.length = 0;
 		}
-		stagedInserts.length = 0;
 		const newDecorationIDToSpecialLine = new ArrayMap<string, CustomLine>();
 		const newOrderedSpecialLines: CustomLine[] = [];
 
