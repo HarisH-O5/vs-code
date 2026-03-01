@@ -412,6 +412,7 @@ class NewChatWidget extends Disposable implements IHistoryNavigationWidget {
 
 	private _createEditor(container: HTMLElement, overflowWidgetsDomNode: HTMLElement): void {
 		const editorContainer = this._editorContainer = dom.append(container, dom.$('.sessions-chat-editor'));
+		editorContainer.dataset['testid'] = 'sessions-chat-input';
 		editorContainer.style.height = `${MIN_EDITOR_HEIGHT}px`;
 
 		// Create scoped context key service and register history navigation
