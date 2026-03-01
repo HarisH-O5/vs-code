@@ -55,6 +55,7 @@ import { IActivityService, NumberBadge } from '../../../../workbench/services/ac
 import { IEditorService, MODAL_GROUP, SIDE_GROUP } from '../../../../workbench/services/editor/common/editorService.js';
 import { IExtensionService } from '../../../../workbench/services/extensions/common/extensions.js';
 import { ICommandService } from '../../../../platform/commands/common/commands.js';
+import { IAuthenticationService } from '../../../../workbench/services/authentication/common/authentication.js';
 import { IWorkbenchLayoutService } from '../../../../workbench/services/layout/browser/layoutService.js';
 import { ISessionsManagementService } from '../../sessions/browser/sessionsManagementService.js';
 
@@ -238,6 +239,7 @@ export class ChangesViewPane extends ViewPane {
 		@ILabelService private readonly labelService: ILabelService,
 		@IStorageService private readonly storageService: IStorageService,
 		@ICommandService private readonly commandService: ICommandService,
+		@IAuthenticationService private readonly authenticationService: IAuthenticationService,
 	) {
 		super(options, keybindingService, contextMenuService, configurationService, contextKeyService, viewDescriptorService, instantiationService, openerService, themeService, hoverService);
 
@@ -544,12 +546,25 @@ export class ChangesViewPane extends ViewPane {
 				return files > 0;
 			}));
 
-			// Check if a PR exists when the active session changes
+			// Cache the GitHub auth token for use in menu args
+			let cachedGitHubToken: string | undefined;
+
+			// Check if a PR exists when the active session changes.
+			// Guard against stale runs: if the session changes before getSessions resolves,
+			// the run id will have incremented and we skip the outdated callback.
+			let checkPRRunId = 0;
 			this.renderDisposables.add(autorun(reader => {
 				const sessionResource = activeSessionResource.read(reader);
+				const currentRunId = ++checkPRRunId;
 				if (sessionResource) {
 					const metadata = this.agentSessionsService.getSession(sessionResource)?.metadata;
-					this.commandService.executeCommand('github.checkOpenPullRequest', sessionResource, metadata).catch(() => { /* ignore */ });
+					this.authenticationService.getSessions('github').then(sessions => {
+						if (currentRunId !== checkPRRunId || sessions.length === 0) {
+							return;
+						}
+						cachedGitHubToken = sessions[0].accessToken;
+						this.commandService.executeCommand('github.checkOpenPullRequest', sessionResource, metadata, cachedGitHubToken).catch(() => { /* ignore */ });
+					}).catch(() => { /* ignore */ });
 				}
 			}));
 
@@ -565,7 +580,7 @@ export class ChangesViewPane extends ViewPane {
 					{
 						telemetrySource: 'changesView',
 						menuOptions: isSessionMenu && sessionResource
-							? { args: [sessionResource, this.agentSessionsService.getSession(sessionResource)?.metadata] }
+							? { args: [sessionResource, this.agentSessionsService.getSession(sessionResource)?.metadata, cachedGitHubToken] }
 							: { shouldForwardArgs: true },
 						buttonConfigProvider: (action) => {
 							if (action.id === 'chatEditing.viewChanges' || action.id === 'chatEditing.viewPreviousEdits' || action.id === 'chatEditing.viewAllSessionChanges' || action.id === 'chat.openSessionWorktreeInVSCode') {
