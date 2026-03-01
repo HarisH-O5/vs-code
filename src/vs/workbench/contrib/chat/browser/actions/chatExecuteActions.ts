@@ -423,7 +423,9 @@ export class OpenModelPickerAction extends Action2 {
 					ContextKeyExpr.and(
 						ContextKeyExpr.or(
 							ChatContextKeys.lockedToCodingAgent.negate(),
-							ChatContextKeys.chatSessionHasTargetedModels),
+							ChatContextKeys.agentSessionType.isEqualTo(AgentSessionProviders.AgentHost),
+							ChatContextKeys.chatSessionHasTargetedModels,
+						),
 						ContextKeyExpr.or(
 							ContextKeyExpr.equals(ChatContextKeys.location.key, ChatAgentLocation.Chat),
 							ContextKeyExpr.equals(ChatContextKeys.location.key, ChatAgentLocation.EditorInline),

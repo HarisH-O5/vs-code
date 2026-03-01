@@ -1426,6 +1426,8 @@ export default tseslint.config(
 					// - electron-main
 					'when': 'hasNode',
 					'allow': [
+						'@anthropic-ai/claude-agent-sdk',
+						'@github/copilot-sdk',
 						'@parcel/watcher',
 						'@vscode/sqlite3',
 						'@vscode/vscode-languagedetection',

@@ -1081,15 +1081,27 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 		models.sort((a, b) => a.metadata.name.localeCompare(b.metadata.name));
 
 		const sessionType = this.getCurrentSessionType();
+		const agentHostOnly = sessionType === AgentSessionProviders.AgentHost;
 		if (sessionType && sessionType !== AgentSessionProviders.Local) {
 			// Session has a specific chat session type - show only models that target
 			// this session type, if any such models exist.
-			return models.filter(entry => entry.metadata?.targetChatSessionType === sessionType && entry.metadata?.isUserSelectable);
+			const targeted = models.filter(entry => entry.metadata?.targetChatSessionType === sessionType);
+			if (targeted.length > 0) {
+				return targeted;
+			}
 		}
 
 		// No session type or no targeted models - show general models (those without
 		// a targetChatSessionType) filtered by the standard criteria.
-		return models.filter(entry => !entry.metadata?.targetChatSessionType && entry.metadata?.isUserSelectable && this.modelSupportedForDefaultAgent(entry) && this.modelSupportedForInlineChat(entry));
+		return models.filter(entry => {
+			if (entry.metadata?.targetChatSessionType || !entry.metadata?.isUserSelectable) {
+				return false;
+			}
+			if (agentHostOnly) {
+				return entry.metadata.vendor === 'agent-host';
+			}
+			return this.modelSupportedForDefaultAgent(entry) && this.modelSupportedForInlineChat(entry);
+		});
 	}
 
 	/**
