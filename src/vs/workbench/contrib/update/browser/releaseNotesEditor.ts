@@ -228,8 +228,15 @@ export class ReleaseNotesManager extends Disposable {
 				throw new Error('Failed to fetch release notes');
 			}
 
-			if (!text || (!/^#\s/.test(text) && !useCurrentFile)) { // release notes always starts with `#` followed by whitespace, except when using the current file
+			if (!text || (!/^#\s/.test(text) && !text.startsWith('---') && !useCurrentFile)) { // release notes always starts with `#` or YAML front-matter, except when using the current file
 				throw new Error('Invalid release notes');
+			}
+
+			// On stable builds, reject release notes that are still the Insiders pre-release
+			// version. This can happen when a new stable release ships before the final stable
+			// release notes are published to the website.
+			if (!useCurrentFile && this._productService.quality === 'stable' && isInsidersReleaseNotes(text)) {
+				throw new Error('not found');
 			}
 
 			return patchKeybindings(text);
@@ -772,6 +779,21 @@ export class ReleaseNotesManager extends Disposable {
 			});
 		}
 	}
+}
+
+/**
+ * Returns true if the release notes text is for an Insiders pre-release build.
+ * Determined by the `ProductEdition: Insiders` YAML front-matter field.
+ */
+export function isInsidersReleaseNotes(text: string): boolean {
+	if (text.startsWith('---')) {
+		const end = text.indexOf('\n---', 3);
+		if (end !== -1) {
+			const frontmatter = text.substring(0, end + 4);
+			return /^ProductEdition:\s*Insiders\s*$/m.test(frontmatter);
+		}
+	}
+	return false;
 }
 
 export async function renderReleaseNotesMarkdown(
