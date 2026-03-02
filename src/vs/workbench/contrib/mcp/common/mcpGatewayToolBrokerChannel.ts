@@ -30,8 +30,16 @@ export class McpGatewayToolBrokerChannel extends Disposable implements IServerCh
 	private readonly _serverIdMap = new Map<string, number>();
 	private _nextServerIndex = 0;
 
+	/**
+	 * Per-server promise that races server startup against the grace period timeout.
+	 * Once set for a server, subsequent list calls await the already-resolved promise
+	 * and return immediately instead of waiting again.
+	 */
+	private readonly _startupGrace = new Map<string, Promise<boolean>>();
+
 	constructor(
 		private readonly _mcpService: IMcpService,
+		private readonly _startupGracePeriodMs = 5000,
 	) {
 		super();
 
@@ -81,6 +89,35 @@ export class McpGatewayToolBrokerChannel extends Disposable implements IServerCh
 		return undefined;
 	}
 
+	private _waitForStartup(server: IMcpServer): Promise<boolean> {
+		const id = server.definition.id;
+		if (!this._startupGrace.has(id)) {
+			this._startupGrace.set(id, Promise.race([
+				this._ensureServerReady(server),
+				new Promise<boolean>(resolve => setTimeout(() => resolve(false), this._startupGracePeriodMs)),
+			]));
+		}
+		return this._startupGrace.get(id)!;
+	}
+
+	private async _shouldUseCachedData(server: IMcpServer): Promise<boolean> {
+		const cacheState = server.cacheState.get();
+		if (cacheState === McpServerCacheState.Unknown || cacheState === McpServerCacheState.Outdated) {
+			// On first list call: wait up to the grace period for the server to start.
+			// On subsequent calls: the stored promise is already resolved, returns immediately.
+			// Outdated servers get the same grace period as Unknown — a prior fast startup
+			// does not guarantee a fast restart.
+			await this._waitForStartup(server);
+			const newState = server.cacheState.get();
+			return newState === McpServerCacheState.Live
+				|| newState === McpServerCacheState.Cached
+				|| newState === McpServerCacheState.RefreshingFromCached;
+		}
+		return cacheState === McpServerCacheState.Live
+			|| cacheState === McpServerCacheState.Cached
+			|| cacheState === McpServerCacheState.RefreshingFromCached;
+	}
+
 	listen<T>(_ctx: unknown, event: string): Event<T> {
 		switch (event) {
 			case 'onDidChangeTools':
@@ -122,26 +159,16 @@ export class McpGatewayToolBrokerChannel extends Disposable implements IServerCh
 	}
 
 	private async _listTools(): Promise<readonly MCP.Tool[]> {
-		const mcpTools: MCP.Tool[] = [];
 		const servers = this._mcpService.servers.get();
-		await Promise.all(servers.map(server => this._ensureServerReady(server)));
-
-		for (const server of servers) {
-			const cacheState = server.cacheState.get();
-			if (cacheState !== McpServerCacheState.Live && cacheState !== McpServerCacheState.Cached && cacheState !== McpServerCacheState.RefreshingFromCached) {
-				continue;
+		const perServer = await Promise.all(servers.map(async server => {
+			if (!await this._shouldUseCachedData(server)) {
+				return [] as MCP.Tool[];
 			}
-
-			for (const tool of server.tools.get()) {
-				if (!(tool.visibility & McpToolVisibility.Model)) {
-					continue;
-				}
-
-				mcpTools.push(tool.definition);
-			}
-		}
-
-		return mcpTools;
+			return server.tools.get()
+				.filter(t => t.visibility & McpToolVisibility.Model)
+				.map(t => t.definition);
+		}));
+		return perServer.flat();
 	}
 
 	private async _callTool(name: string, args: Record<string, unknown>, token: CancellationToken = CancellationToken.None): Promise<IGatewayCallToolResult> {
@@ -163,7 +190,9 @@ export class McpGatewayToolBrokerChannel extends Disposable implements IServerCh
 		const results: IGatewayServerResources[] = [];
 		const servers = this._mcpService.servers.get();
 		await Promise.all(servers.map(async server => {
-			await this._ensureServerReady(server);
+			if (!await this._shouldUseCachedData(server)) {
+				return;
+			}
 
 			const capabilities = server.capabilities.get();
 			if (!capabilities || !(capabilities & McpCapability.Resources)) {
@@ -195,7 +224,9 @@ export class McpGatewayToolBrokerChannel extends Disposable implements IServerCh
 		const servers = this._mcpService.servers.get();
 
 		await Promise.all(servers.map(async server => {
-			await this._ensureServerReady(server);
+			if (!await this._shouldUseCachedData(server)) {
+				return;
+			}
 
 			const capabilities = server.capabilities.get();
 			if (!capabilities || !(capabilities & McpCapability.Resources)) {
